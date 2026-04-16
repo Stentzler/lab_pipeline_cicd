@@ -1,0 +1,80 @@
+name: CI - Python API
+
+# This workflow runs whenever code is pushed
+# or whenever a pull request targets the selected branches.
+on:
+  push:
+    branches:
+      - develop
+      - main
+      - 'release/**'
+  pull_request:
+    branches:
+      - develop
+      - main
+      - 'release/**'
+
+# Minimal permissions for a CI-only workflow.
+# We are not deploying yet, so read access is enough here.
+permissions:
+  contents: read
+
+# Prevent duplicate runs for the same branch/PR from stacking up unnecessarily.
+# If a new commit arrives on the same ref, the older run is cancelled.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    name: Test and build application
+    runs-on: ubuntu-latest
+
+    # Avoid jobs hanging forever.
+    timeout-minutes: 5
+
+    defaults:
+      run:
+        # Our application lives inside the app/ directory.
+        working-directory: app
+
+    steps:
+      # Step 1: clone the repository into the runner
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      # Step 2: install the Python version used by the project.
+      # Using a version file is usually cleaner than hardcoding it in many places.
+      # If you do not have .python-version yet, replace node-version-file
+      # with python-version: "3.12"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+            python-version-file: '.python-version'
+            cache: 'pip'
+            cache-dependency-path: app/requirements.txt
+
+      # Step 3: install project dependencies
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Step 4: run all tests
+      # Right now this includes both unit and integration tests through pytest discovery.
+      - name: Run tests
+        run: |
+          python -m pytest -q
+
+      # Step 5: build the Docker image
+      # This validates that the Dockerfile works in CI.
+      # We are not pushing to ECR yet.
+      - name: Build Docker image
+        run: |
+          docker build -t study-api:${{ github.sha }} .
+
+      # Optional but very useful for learning:
+      # show the built image in the job log
+      - name: List built Docker image
+        run: |
+          docker images | grep study-api
