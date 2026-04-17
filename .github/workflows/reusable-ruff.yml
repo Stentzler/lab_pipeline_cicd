@@ -7,14 +7,13 @@ permissions:
   contents: read
 
 jobs:
-  ruff:
+  linter:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 2
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
-
 
       - name: Run Ruff lint
         uses: astral-sh/ruff-action@4919ec5cf1f49eff0871dbcea0da843445b837e6 # v3.6.1
@@ -22,3 +21,6 @@ jobs:
           # We point Ruff at the app directory.
           # --output-format=github makes findings appear as GitHub annotations.
           args: "check app --config app/pyproject.toml --output-format=github"
+
+      - name: Ruff passed
+        run: echo "Ruff lint completed successfully"

@@ -35,6 +35,9 @@ jobs:
   ruff:
     uses: ./.github/workflows/reusable-ruff.yml
 
+  bandit:
+    uses: ./.github/workflows/reusable-bandit.yml
+
   tests:
     runs-on: ubuntu-latest
     needs: ruff
