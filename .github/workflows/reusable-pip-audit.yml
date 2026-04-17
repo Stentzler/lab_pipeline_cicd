@@ -1,0 +1,26 @@
+name: Reusable pip-audit
+
+# This workflow is called by another workflow.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - name: Run pip-audit
+        uses: pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266 # v1.1.0
+        with:
+          inputs: app/requirements.txt
+
+      - name: Pip Audit passed
+        run: echo "Pip Audit completed successfully"

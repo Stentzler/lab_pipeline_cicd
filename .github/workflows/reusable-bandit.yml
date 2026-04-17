@@ -29,3 +29,6 @@ jobs:
       - name: Run Bandit
         run: |
           bandit -r app/src -f txt
+
+      - name: Bandit passed
+        run: echo "Bandit completed successfully"

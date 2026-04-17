@@ -82,6 +82,9 @@ jobs:
       - name: Run integration tests
         run: python -m pytest tests/integration -q
 
+  pip_audit:
+    uses: ./.github/workflows/reusable-pip-audit.yml
+
   build:
     runs-on: ubuntu-latest
     needs: tests
