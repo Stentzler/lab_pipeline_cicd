@@ -21,4 +21,4 @@ jobs:
         with:
           # We point Ruff at the app directory.
           # --output-format=github makes findings appear as GitHub annotations.
-          args: "check app --output-format=github"
+          args: "check app --config app/pyproject.toml --output-format=github"
