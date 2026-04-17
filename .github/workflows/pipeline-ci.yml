@@ -83,11 +83,12 @@ jobs:
         run: python -m pytest tests/integration -q
 
   pip_audit:
+    needs: tests
     uses: ./.github/workflows/reusable-pip-audit.yml
 
   build:
     runs-on: ubuntu-latest
-    needs: tests
+    needs: pip_audit
     timeout-minutes: 5
 
     defaults:
