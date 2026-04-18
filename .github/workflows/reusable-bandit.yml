@@ -24,11 +24,40 @@ jobs:
       - name: Install Bandit
         run: |
           python -m pip install --upgrade pip
-          pip install bandit
+          python -m pip install bandit
 
-      - name: Run Bandit
+      - name: Run Bandit and save JSON report
+        id: bandit
         run: |
-          bandit -r app/src -f txt
+          # Folder for reports that may later be sent to SonarQube.
+          mkdir -p reports
 
-      - name: Bandit passed
-        run: echo "Bandit completed successfully"
+          # Do not stop immediately if Bandit returns nonzero.
+          # We want to save the report and upload it first.
+          set +e
+
+          # Example threshold:
+          # -ll  => medium and high severity
+          # -ii  => medium and high confidence
+          python -m bandit \
+            -r app/src \
+            -f json \
+            -o reports/bandit-report.json \
+            -ll \
+            -ii
+
+          # Save Bandit's exit code as a step output.
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+          # Restore normal shell behavior.
+          set -e
+
+      - name: Upload Bandit report
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: bandit-report
+          path: reports/bandit-report.json
+
+      - name: Fail if Bandit found issues
+        if: steps.bandit.outputs.exit_code != '0'
+        run: exit 1

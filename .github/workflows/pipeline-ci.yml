@@ -25,7 +25,6 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# Shared variables for all jobs
 env:
   PYTHON_VERSION: '3.12'
   IMAGE_NAME: study-api
@@ -48,7 +47,7 @@ jobs:
 
   tests:
     runs-on: ubuntu-latest
-    needs: [setup, ruff, bandit]
+    needs: [ruff, bandit]
     timeout-minutes: 5
 
     defaults:
@@ -82,11 +81,25 @@ jobs:
       - name: Check dependency graph
         run: python -m pip check
 
-      - name: Run unit tests
-        run: python -m pytest tests/unit -q
+      - name: Run tests with coverage
+        run: |
+          mkdir -p reports
 
-      - name: Run integration tests
-        run: python -m pytest tests/integration -q
+          python -m pytest tests/unit tests/integration -q \
+            --cov \
+            --cov-config=.coveragerc \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --junitxml=reports/junit.xml \
+            --cov-fail-under=80
+
+      - name: Upload coverage and test reports
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: test-reports
+          path: |
+            app/coverage.xml
+            app/reports/junit.xml
 
   pip_audit:
     needs: tests
@@ -94,44 +107,67 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    needs: [setup, pip_audit]
+    needs: [pip_audit]
     timeout-minutes: 5
 
     defaults:
       run:
         working-directory: app
-
+  
     steps:
       - name: Checkout repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd #v5.0.1
-
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+  
       - name: Show image tag
         run: |
           echo "Image name = $IMAGE_NAME"
           echo "Image tag  = $IMAGE_TAG"
-
+  
       - name: Build Docker image
         run: |
-          docker build -t $IMAGE_NAME:$IMAGE_TAG .
-
-      - name: Show built image
+          docker build -t "$IMAGE_NAME:$IMAGE_TAG" .
+  
+      - name: Verify built image
         run: |
-          docker images | grep "$IMAGE_NAME"
-
+          docker image inspect "$IMAGE_NAME:$IMAGE_TAG" > /dev/null
+  
       - name: Save Docker image to tarball
         run: |
-          docker save -o image.tar $IMAGE_NAME:$IMAGE_TAG
-
+          docker save -o image.tar "$IMAGE_NAME:$IMAGE_TAG"
+  
       - name: Upload Docker image artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: docker-image-${{ github.sha }}
           path: app/image.tar
+          retention-days: 1
+          if-no-files-found: error
 
   trivy:
     needs: [setup, build]
-    uses: ./.github/workflows/reusable-trivy.yml
+    uses: ./.github/workflows/reusable-trivy-report.yml
     with:
       image_name: ${{ needs.setup.outputs.image_name }}
       image_tag: ${{ needs.setup.outputs.image_tag }}
       artifact_name: docker-image-${{ github.sha }}
+
+  sonar:
+    needs: [trivy]
+    uses: ./.github/workflows/reusable-sonar.yml
+    with:
+      project_base_dir: app
+      sonar_host_url: ${{ vars.SONAR_HOST_URL }}
+      ruff_artifact_name: ruff-report
+      bandit_artifact_name: bandit-report
+      test_artifact_name: test-reports
+      trivy_artifact_name: trivy-report
+    secrets:
+      sonar_token: ${{ secrets.SONAR_TOKEN }}
+
+  trivy_enforcement:
+    needs: [trivy, sonar]
+    if: always()
+    uses: ./.github/workflows/reusable-trivy-enforcement.yml
+    with:
+      trivy_job_result: ${{ needs.trivy.result }}
+      trivy_blocking: ${{ needs.trivy.outputs.trivy_blocking }}

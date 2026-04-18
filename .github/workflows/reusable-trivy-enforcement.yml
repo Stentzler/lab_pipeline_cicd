@@ -1,0 +1,53 @@
+name: Reusable Trivy Enforcement
+
+on:
+  workflow_call:
+    inputs:
+      # Result of the Trivy job itself.
+      # Example values from "needs.trivy.result":
+      # success, failure, cancelled, skipped
+      trivy_job_result:
+        required: true
+        type: string
+
+      # Output exposed by reusable-trivy.yml
+      # true  = blocking vulnerabilities found
+      # false = no blocking vulnerabilities found
+      trivy_blocking:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  enforce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Show received Trivy status
+        run: |
+          echo "Trivy job result  = ${{ inputs.trivy_job_result }}"
+          echo "Trivy blocking    = ${{ inputs.trivy_blocking }}"
+
+      - name: Fail if Trivy job itself had an unexpected problem
+        # This catches infrastructure/tooling problems.
+        # Example: artifact missing, docker load failed, Trivy action crashed, etc.
+        if: inputs.trivy_job_result != 'success'
+        run: |
+          echo "Trivy job did not complete successfully."
+          exit 1
+
+      - name: Fail if Trivy found blocking vulnerabilities
+        # This is the real policy gate.
+        # The reusable Trivy workflow scanned earlier and exposed this result.
+        if: inputs.trivy_blocking == 'true'
+        run: |
+          echo "Trivy found blocking HIGH/CRITICAL vulnerabilities."
+          exit 1
+
+      - name: Trivy gate passed
+        if: inputs.trivy_job_result == 'success' && inputs.trivy_blocking != 'true'
+        run: |
+          echo "Trivy final enforcement passed."

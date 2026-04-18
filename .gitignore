@@ -207,3 +207,6 @@ SPEC.md
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Custom
+test.sh

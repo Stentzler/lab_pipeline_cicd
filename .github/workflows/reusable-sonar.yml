@@ -1,0 +1,104 @@
+name: Reusable SonarQube
+
+on:
+  workflow_call:
+    inputs:
+      # Folder where sonar-project.properties lives.
+      # In your case, this is "app".
+      project_base_dir:
+        required: false
+        type: string
+        default: app
+
+      # SonarQube server URL.
+      # Better as input because it is not sensitive.
+      sonar_host_url:
+        required: true
+        type: string
+
+      # Artifact names produced by previous jobs.
+      # They have defaults, but keeping them configurable makes the workflow reusable.
+      ruff_artifact_name:
+        required: false
+        type: string
+        default: ruff-report
+
+      bandit_artifact_name:
+        required: false
+        type: string
+        default: bandit-report
+
+      test_artifact_name:
+        required: false
+        type: string
+        default: test-reports
+
+      trivy_artifact_name:
+        required: false
+        type: string
+        default: trivy-report
+
+    secrets:
+      sonar_token:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  sonar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    # Extra protection:
+    # even if someone calls this reusable workflow from another branch,
+    # it will only run for pushes to main.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          # Sonar works better with full git history available.
+          fetch-depth: 0
+
+      - name: Create report directories
+        run: |
+          mkdir -p "${{ inputs.project_base_dir }}/reports"
+
+      - name: Download Ruff report
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.ruff_artifact_name }}
+          path: ${{ inputs.project_base_dir }}/reports
+
+      - name: Download Bandit report
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.bandit_artifact_name }}
+          path: ${{ inputs.project_base_dir }}/reports
+
+      - name: Download test reports
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.test_artifact_name }}
+          path: ${{ inputs.project_base_dir }}
+
+      - name: Download Trivy SARIF report
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.trivy_artifact_name }}
+          path: ${{ inputs.project_base_dir }}/reports
+
+      - name: Show files prepared for Sonar
+        run: |
+          find "${{ inputs.project_base_dir }}" -maxdepth 3 -type f | sort
+
+      - name: Run SonarQube scan
+        uses: SonarSource/sonarqube-scan-action@v7
+        env:
+          SONAR_TOKEN: ${{ secrets.sonar_token }}
+          SONAR_HOST_URL: ${{ inputs.sonar_host_url }}
+        with:
+          # This tells the scanner where sonar-project.properties is located.
+          projectBaseDir: ${{ inputs.project_base_dir }}

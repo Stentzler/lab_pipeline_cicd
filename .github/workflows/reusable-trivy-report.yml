@@ -1,0 +1,78 @@
+name: Reusable Trivy
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        required: true
+        type: string
+      image_tag:
+        required: true
+        type: string
+      artifact_name:
+        required: true
+        type: string
+    outputs:
+      trivy_blocking:
+        description: "Whether Trivy found blocking vulnerabilities"
+        value: ${{ jobs.image-inspection.outputs.trivy_blocking }}
+
+permissions:
+  contents: read
+
+jobs:
+  image-inspection:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    outputs:
+      trivy_blocking: ${{ steps.trivy.outputs.blocking }}
+
+    steps:
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: trivy-artifact
+
+      - name: Load Docker image from tarball
+        run: |
+          docker load --input trivy-artifact/image.tar
+
+      - name: Verify loaded image
+        run: |
+          docker image inspect "${{ inputs.image_name }}:${{ inputs.image_tag }}" > /dev/null
+
+      - name: Run Trivy and save SARIF
+        id: trivy
+        run: |
+          mkdir -p reports
+
+          set +e
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$PWD:/work" \
+            aquasec/trivy:0.70.0 image \
+            --format sarif \
+            --output /work/reports/trivy-report.sarif \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --vuln-type os,library \
+            "${{ inputs.image_name }}:${{ inputs.image_tag }}"
+          EXIT_CODE=$?
+
+          if [ "$EXIT_CODE" -eq 0 ]; then
+            echo "blocking=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "blocking=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          set -e
+
+      - name: Upload Trivy SARIF report
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: trivy-report
+          path: reports/trivy-report.sarif
+          if-no-files-found: error
+          retention-days: 1
