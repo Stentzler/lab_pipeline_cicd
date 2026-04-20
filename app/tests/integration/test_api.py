@@ -4,7 +4,6 @@ from src.main import app
 
 client = TestClient(app)
 
-# triggering the pipeline for test
 
 def test_health() -> None:
     response = client.get("/health")
