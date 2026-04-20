@@ -58,6 +58,7 @@ jobs:
             --severity HIGH,CRITICAL \
             --ignore-unfixed \
             --vuln-type os,library \
+            --exit-code 1 \
             "${{ inputs.image_name }}:${{ inputs.image_tag }}"
           EXIT_CODE=$?
 
