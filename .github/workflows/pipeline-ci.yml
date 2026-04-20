@@ -9,6 +9,7 @@ on:
     paths:
       - 'app/**'
       - '.github/workflows/pipeline-ci.yml'
+      - '.github/workflows/reusable-sonar.yml'
   pull_request:
     branches:
       - develop
@@ -17,6 +18,7 @@ on:
     paths:
       - 'app/**'
       - '.github/workflows/pipeline-ci.yml'
+      - '.github/workflows/reusable-sonar.yml'
 
 permissions:
   contents: read
@@ -154,15 +156,16 @@ jobs:
   sonar:
     needs: [trivy]
     uses: ./.github/workflows/reusable-sonar.yml
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     with:
-      project_base_dir: app
+      sonar_environment: SONAR_TOKEN
       sonar_host_url: ${{ vars.SONAR_HOST_URL }}
+      project_base_dir: app
       ruff_artifact_name: ruff-report
       bandit_artifact_name: bandit-report
       test_artifact_name: test-reports
       trivy_artifact_name: trivy-report
-    secrets:
-      sonar_token: ${{ secrets.SONAR_TOKEN }}
 
   trivy_enforcement:
     needs: [trivy, sonar]

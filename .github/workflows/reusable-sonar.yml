@@ -2,45 +2,38 @@ name: Reusable SonarQube
 
 on:
   workflow_call:
+    secrets:
+      SONAR_TOKEN:
+        required: false
     inputs:
-      # Folder where sonar-project.properties lives.
-      # In your case, this is "app".
+      sonar_environment:
+        required: false
+        type: string
+        default: SONAR_TOKEN
+      sonar_host_url:
+        required: false
+        type: string
+        default: ''
       project_base_dir:
         required: false
         type: string
         default: app
-
-      # SonarQube server URL.
-      # Better as input because it is not sensitive.
-      sonar_host_url:
-        required: true
-        type: string
-
-      # Artifact names produced by previous jobs.
-      # They have defaults, but keeping them configurable makes the workflow reusable.
       ruff_artifact_name:
         required: false
         type: string
         default: ruff-report
-
       bandit_artifact_name:
         required: false
         type: string
         default: bandit-report
-
       test_artifact_name:
         required: false
         type: string
         default: test-reports
-
       trivy_artifact_name:
         required: false
         type: string
         default: trivy-report
-
-    secrets:
-      sonar_token:
-        required: true
 
 permissions:
   contents: read
@@ -49,17 +42,14 @@ jobs:
   sonar:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-
-    # Extra protection:
-    # even if someone calls this reusable workflow from another branch,
-    # it will only run for pushes to main.
+    environment:
+      name: ${{ inputs.sonar_environment }}
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
-          # Sonar works better with full git history available.
           fetch-depth: 0
 
       - name: Create report directories
@@ -67,38 +57,52 @@ jobs:
           mkdir -p "${{ inputs.project_base_dir }}/reports"
 
       - name: Download Ruff report
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: ${{ inputs.ruff_artifact_name }}
           path: ${{ inputs.project_base_dir }}/reports
 
       - name: Download Bandit report
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: ${{ inputs.bandit_artifact_name }}
           path: ${{ inputs.project_base_dir }}/reports
 
       - name: Download test reports
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: ${{ inputs.test_artifact_name }}
           path: ${{ inputs.project_base_dir }}
 
       - name: Download Trivy SARIF report
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: ${{ inputs.trivy_artifact_name }}
           path: ${{ inputs.project_base_dir }}/reports
 
-      - name: Show files prepared for Sonar
+      - name: Debug Sonar env
+        env:
+          SONAR_HOST_URL: ${{ inputs.sonar_host_url || vars.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          find "${{ inputs.project_base_dir }}" -maxdepth 3 -type f | sort
+          if [ -z "$SONAR_HOST_URL" ]; then
+            echo "SONAR_HOST_URL is empty"
+            exit 1
+          else
+            echo "SONAR_HOST_URL is present"
+          fi
+
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "SONAR_TOKEN is empty"
+            exit 1
+          else
+            echo "SONAR_TOKEN is present"
+          fi
 
       - name: Run SonarQube scan
-        uses: SonarSource/sonarqube-scan-action@299e4b793aaa83bf2aba7c9c14bedbb485688ec4 # v7.1.0
+        uses: SonarSource/sonarqube-scan-action@299e4b793aaa83bf2aba7c9c14bedbb485688ec4
         env:
-          SONAR_TOKEN: ${{ secrets.sonar_token }}
-          SONAR_HOST_URL: ${{ inputs.sonar_host_url }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ inputs.sonar_host_url || vars.SONAR_HOST_URL }}
         with:
-          # This tells the scanner where sonar-project.properties is located.
           projectBaseDir: ${{ inputs.project_base_dir }}
