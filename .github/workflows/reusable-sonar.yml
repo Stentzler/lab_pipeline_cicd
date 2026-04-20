@@ -95,7 +95,7 @@ jobs:
           find "${{ inputs.project_base_dir }}" -maxdepth 3 -type f | sort
 
       - name: Run SonarQube scan
-        uses: SonarSource/sonarqube-scan-action@v7
+        uses: SonarSource/sonarqube-scan-action@299e4b793aaa83bf2aba7c9c14bedbb485688ec4 # v7.1.0
         env:
           SONAR_TOKEN: ${{ secrets.sonar_token }}
           SONAR_HOST_URL: ${{ inputs.sonar_host_url }}
