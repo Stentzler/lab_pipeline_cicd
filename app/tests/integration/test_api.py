@@ -12,7 +12,7 @@ def test_health() -> None:
 
 
 def test_hello() -> None:
-    response = client.get("/health")
+    response = client.get("/hello")
     assert response.status_code == 200
     assert response.json() == {"message": "hello from study api"}
 
