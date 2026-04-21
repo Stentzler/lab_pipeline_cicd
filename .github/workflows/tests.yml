@@ -1,0 +1,77 @@
+name: Reusable Tests
+
+on:
+  workflow_call:
+    inputs:
+      app_dir:
+        required: true
+        type: string
+      python_version:
+        required: true
+        type: string
+      requirements_path:
+        required: true
+        type: string
+      coverage_fail_under:
+        required: true
+        type: number
+      report_retention_days:
+        required: true
+        type: number
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - name: Set up Python environment
+        uses: ./.github/actions/setup-python-tooling
+        with:
+          python_version: ${{ inputs.python_version }}
+          cache_dependency_path: ${{ inputs.app_dir }}/${{ inputs.requirements_path }}
+          install_command: |-
+            python -m pip install --upgrade pip
+            python -m pip install -r "${{ inputs.requirements_path }}"
+          working_directory: ${{ inputs.app_dir }}
+
+      - name: Check dependency graph
+        working-directory: ${{ inputs.app_dir }}
+        run: python -m pip check
+
+      - name: Run tests with coverage
+        id: pytest
+        working-directory: ${{ inputs.app_dir }}
+        run: |
+          mkdir -p reports
+          set +e
+          python -m pytest tests/unit tests/integration -q \
+            --cov \
+            --cov-config=.coveragerc \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --junitxml=reports/junit.xml \
+            --cov-fail-under=${{ inputs.coverage_fail_under }}
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          set -e
+
+      - name: Upload coverage and test reports
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: test-reports
+          path: |
+            ${{ inputs.app_dir }}/coverage.xml
+            ${{ inputs.app_dir }}/reports/junit.xml
+          if-no-files-found: error
+          retention-days: ${{ inputs.report_retention_days }}
+
+      - name: Fail if tests failed
+        if: steps.pytest.outputs.exit_code != '0'
+        run: exit 1

@@ -1,0 +1,190 @@
+name: CI/CD - Python API
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - develop
+      - main
+      - 'release/**'
+    paths:
+      - 'app/**'
+      - '.github/workflows/**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'app/**'
+      - '.github/workflows/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_DIR: app
+  BANDIT_ARTIFACT_REPORT: bandit-report
+  COVERAGE_FAIL_UNDER: 80
+  IMAGE_NAME: study-api
+  IMAGE_RETENTION_DAYS: 1
+  PYTHON_VERSION: '3.12'
+  REPORT_RETENTION_DAYS: 1
+  REQUIREMENTS_PATH: requirements.txt
+  REQUIREMENTS_FILE: app/requirements.txt
+  RUFF_ARTIFACT_REPORT: ruff-report
+  SONAR_ENVIRONMENT: SONAR_TOKEN
+  SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+  TEST_ARTIFACT_REPORT: test-reports
+  TRIVY_ARTIFACT_REPORT: trivy-report
+
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    outputs:
+      app_dir: ${{ steps.values.outputs.app_dir }}
+      bandit_artifact_report: ${{ steps.values.outputs.bandit_artifact_report }}
+      coverage_fail_under: ${{ steps.values.outputs.coverage_fail_under }}
+      image_name: ${{ steps.values.outputs.image_name }}
+      image_tag: ${{ steps.values.outputs.image_tag }}
+      image_artifact_name: ${{ steps.values.outputs.image_artifact_name }}
+      image_retention_days: ${{ steps.values.outputs.image_retention_days }}
+      python_version: ${{ steps.values.outputs.python_version }}
+      report_retention_days: ${{ steps.values.outputs.report_retention_days }}
+      requirements_path: ${{ steps.values.outputs.requirements_path }}
+      requirements_file: ${{ steps.values.outputs.requirements_file }}
+      ruff_artifact_report: ${{ steps.values.outputs.ruff_artifact_report }}
+      sonar_environment: ${{ steps.values.outputs.sonar_environment }}
+      sonar_host_url: ${{ steps.values.outputs.sonar_host_url }}
+      test_artifact_report: ${{ steps.values.outputs.test_artifact_report }}
+      trivy_artifact_report: ${{ steps.values.outputs.trivy_artifact_report }}
+    steps:
+      - name: Prepare pipeline values
+        id: values
+        run: |
+          echo "app_dir=${APP_DIR}" >> "$GITHUB_OUTPUT"
+          echo "bandit_artifact_report=${BANDIT_ARTIFACT_REPORT}" >> "$GITHUB_OUTPUT"
+          echo "coverage_fail_under=${COVERAGE_FAIL_UNDER}" >> "$GITHUB_OUTPUT"
+          echo "image_name=${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "image_artifact_name=docker-image-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "image_retention_days=${IMAGE_RETENTION_DAYS}" >> "$GITHUB_OUTPUT"
+          echo "python_version=${PYTHON_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "report_retention_days=${REPORT_RETENTION_DAYS}" >> "$GITHUB_OUTPUT"
+          echo "requirements_path=${REQUIREMENTS_PATH}" >> "$GITHUB_OUTPUT"
+          echo "requirements_file=${REQUIREMENTS_FILE}" >> "$GITHUB_OUTPUT"
+          echo "ruff_artifact_report=${RUFF_ARTIFACT_REPORT}" >> "$GITHUB_OUTPUT"
+          echo "sonar_environment=${SONAR_ENVIRONMENT}" >> "$GITHUB_OUTPUT"
+          echo "sonar_host_url=${SONAR_HOST_URL}" >> "$GITHUB_OUTPUT"
+          echo "test_artifact_report=${TEST_ARTIFACT_REPORT}" >> "$GITHUB_OUTPUT"
+          echo "trivy_artifact_report=${TRIVY_ARTIFACT_REPORT}" >> "$GITHUB_OUTPUT"
+
+  ruff:
+    needs: metadata
+    uses: ./.github/workflows/reusable-ruff-scan.yml
+    with:
+      app_dir: ${{ needs.metadata.outputs.app_dir }}
+      config_path: ${{ needs.metadata.outputs.app_dir }}/pyproject.toml
+      report_retention_days: ${{ fromJSON(needs.metadata.outputs.report_retention_days) }}
+
+  bandit:
+    needs: metadata
+    uses: ./.github/workflows/reusable-bandit-scan.yml
+    with:
+      source_dir: ${{ needs.metadata.outputs.app_dir }}/src
+      python_version: ${{ needs.metadata.outputs.python_version }}
+      report_retention_days: ${{ fromJSON(needs.metadata.outputs.report_retention_days) }}
+
+  tests:
+    needs: [metadata, ruff, bandit]
+    uses: ./.github/workflows/tests.yml
+    with:
+      app_dir: ${{ needs.metadata.outputs.app_dir }}
+      python_version: ${{ needs.metadata.outputs.python_version }}
+      requirements_path: ${{ needs.metadata.outputs.requirements_path }}
+      coverage_fail_under: ${{ fromJSON(needs.metadata.outputs.coverage_fail_under) }}
+      report_retention_days: ${{ fromJSON(needs.metadata.outputs.report_retention_days) }}
+
+  pip_audit:
+    needs: [metadata, tests]
+    uses: ./.github/workflows/reusable-pip-audit-scan.yml
+    with:
+      requirements_path: ${{ needs.metadata.outputs.requirements_file }}
+
+  build:
+    needs: [metadata, pip_audit]
+    # Build images for release branches, main, and PRs targeting main.
+    if: >-
+      github.ref == 'refs/heads/main' ||
+      startsWith(github.ref, 'refs/heads/release/') ||
+      (github.event_name == 'pull_request' && github.base_ref == 'main')
+    uses: ./.github/workflows/build.yml
+    with:
+      app_dir: ${{ needs.metadata.outputs.app_dir }}
+      image_name: ${{ needs.metadata.outputs.image_name }}
+      image_tag: ${{ needs.metadata.outputs.image_tag }}
+      artifact_name: ${{ needs.metadata.outputs.image_artifact_name }}
+      artifact_retention_days: ${{ fromJSON(needs.metadata.outputs.image_retention_days) }}
+
+  trivy:
+    needs: [metadata, build]
+    # Scan the Docker image only on branch paths that build one.
+    if: >-
+      github.ref == 'refs/heads/main' ||
+      startsWith(github.ref, 'refs/heads/release/') ||
+      (github.event_name == 'pull_request' && github.base_ref == 'main')
+    uses: ./.github/workflows/reusable-trivy-report.yml
+    with:
+      image_name: ${{ needs.metadata.outputs.image_name }}
+      image_tag: ${{ needs.metadata.outputs.image_tag }}
+      artifact_name: ${{ needs.metadata.outputs.image_artifact_name }}
+      report_retention_days: ${{ fromJSON(needs.metadata.outputs.report_retention_days) }}
+
+  sonar:
+    needs: [metadata, ruff, bandit, tests, trivy]
+    # SonarQube runs only after code lands on main.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/reusable-sonar.yml
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    with:
+      sonar_environment: ${{ needs.metadata.outputs.sonar_environment }}
+      sonar_host_url: ${{ needs.metadata.outputs.sonar_host_url }}
+      project_base_dir: ${{ needs.metadata.outputs.app_dir }}
+      ruff_artifact_report: ${{ needs.metadata.outputs.ruff_artifact_report }}
+      bandit_artifact_report: ${{ needs.metadata.outputs.bandit_artifact_report }}
+      test_artifact_report: ${{ needs.metadata.outputs.test_artifact_report }}
+      trivy_artifact_report: ${{ needs.metadata.outputs.trivy_artifact_report }}
+
+  trivy_enforcement:
+    needs: trivy
+    if: >-
+      always() &&
+      needs.trivy.result != 'skipped' &&
+      (
+        github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/heads/release/') ||
+        (github.event_name == 'pull_request' && github.base_ref == 'main')
+      )
+    uses: ./.github/workflows/reusable-trivy-enforcement.yml
+    with:
+      trivy_job_result: ${{ needs.trivy.result }}
+      trivy_blocking: ${{ needs.trivy.outputs.trivy_blocking }}
+
+  # Future Slack notification hook:
+  # notify:
+  #   needs: [ruff, bandit, tests, pip_audit, build, trivy, sonar, trivy_enforcement]
+  #   if: failure()
+  #   uses: ./.github/workflows/reusable-slack-notify.yml
+  #   secrets:
+  #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+  #   with:
+  #     status: failure
+  #     workflow_name: ${{ github.workflow }}
+  #     branch: ${{ github.ref_name }}
+  #     commit_sha: ${{ github.sha }}
+  #     actor: ${{ github.actor }}
+  #     run_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

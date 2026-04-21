@@ -1,0 +1,31 @@
+name: Setup Python Tooling
+description: Set up Python, configure pip cache, and install dependencies or tools.
+
+inputs:
+  python_version:
+    description: Python version to install.
+    required: true
+  cache_dependency_path:
+    description: Dependency file path used for pip cache keying.
+    required: true
+  install_command:
+    description: Shell command used to install dependencies or tools.
+    required: true
+  working_directory:
+    description: Directory where the install command should run.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      with:
+        python-version: ${{ inputs.python_version }}
+        cache: pip
+        cache-dependency-path: ${{ inputs.cache_dependency_path }}
+
+    - name: Install dependencies or tools
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: ${{ inputs.install_command }}

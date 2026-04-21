@@ -1,0 +1,60 @@
+name: Reusable Build
+
+on:
+  workflow_call:
+    inputs:
+      app_dir:
+        required: true
+        type: string
+      image_name:
+        required: true
+        type: string
+      image_tag:
+        required: true
+        type: string
+      artifact_name:
+        required: true
+        type: string
+      artifact_retention_days:
+        required: true
+        type: number
+
+permissions:
+  contents: read
+
+jobs:
+  docker-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - name: Build Docker image
+        env:
+          IMAGE_NAME: ${{ inputs.image_name }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          APP_DIR: ${{ inputs.app_dir }}
+        run: docker build --pull -t "${IMAGE_NAME}:${IMAGE_TAG}" "${APP_DIR}"
+
+      - name: Verify Docker image
+        env:
+          IMAGE_NAME: ${{ inputs.image_name }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: docker image inspect "${IMAGE_NAME}:${IMAGE_TAG}" > /dev/null
+
+      - name: Save Docker image to tarball
+        env:
+          IMAGE_NAME: ${{ inputs.image_name }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          APP_DIR: ${{ inputs.app_dir }}
+        run: docker save -o "${APP_DIR}/image.tar" "${IMAGE_NAME}:${IMAGE_TAG}"
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ${{ inputs.app_dir }}/image.tar
+          retention-days: ${{ inputs.artifact_retention_days }}
+          if-no-files-found: error
