@@ -1,0 +1,53 @@
+name: Run Build
+description: Build the Docker image, package it, and upload it as an artifact.
+
+inputs:
+  app_dir:
+    description: Application directory used as Docker build context.
+    required: true
+  image_name:
+    description: Docker image name.
+    required: true
+  image_tag:
+    description: Docker image tag.
+    required: true
+  artifact_name:
+    description: Artifact name for the packaged Docker image.
+    required: true
+  artifact_retention_days:
+    description: Artifact retention period in days.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Build Docker image
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image_name }}
+        IMAGE_TAG: ${{ inputs.image_tag }}
+        APP_DIR: ${{ inputs.app_dir }}
+      run: docker build --pull -t "${IMAGE_NAME}:${IMAGE_TAG}" "${APP_DIR}"
+
+    - name: Verify Docker image
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image_name }}
+        IMAGE_TAG: ${{ inputs.image_tag }}
+      run: docker image inspect "${IMAGE_NAME}:${IMAGE_TAG}" > /dev/null
+
+    - name: Save Docker image to tarball
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image_name }}
+        IMAGE_TAG: ${{ inputs.image_tag }}
+        APP_DIR: ${{ inputs.app_dir }}
+      run: docker save -o "${APP_DIR}/image.tar" "${IMAGE_NAME}:${IMAGE_TAG}"
+
+    - name: Upload Docker image artifact
+      uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+      with:
+        name: ${{ inputs.artifact_name }}
+        path: ${{ inputs.app_dir }}/image.tar
+        retention-days: ${{ inputs.artifact_retention_days }}
+        if-no-files-found: error

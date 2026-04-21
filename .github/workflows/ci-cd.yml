@@ -9,12 +9,14 @@ on:
       - 'release/**'
     paths:
       - 'app/**'
+      - '.github/actions/**'
       - '.github/workflows/**'
   pull_request:
     branches:
       - main
     paths:
       - 'app/**'
+      - '.github/actions/**'
       - '.github/workflows/**'
 
 permissions:
@@ -84,35 +86,66 @@ jobs:
 
   ruff:
     needs: metadata
-    uses: ./.github/workflows/reusable-ruff-scan.yml
-    with:
-      app_dir: ${{ needs.metadata.outputs.app_dir }}
-      config_path: ${{ needs.metadata.outputs.app_dir }}/pyproject.toml
-      report_retention_days: ${{ fromJSON(needs.metadata.outputs.report_retention_days) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - name: Run Ruff scan
+        uses: ./.github/actions/run-ruff-scan
+        with:
+          app_dir: ${{ needs.metadata.outputs.app_dir }}
+          config_path: ${{ needs.metadata.outputs.app_dir }}/pyproject.toml
+          report_retention_days: ${{ needs.metadata.outputs.report_retention_days }}
+          artifact_name: ${{ needs.metadata.outputs.ruff_artifact_report }}
 
   bandit:
     needs: metadata
-    uses: ./.github/workflows/reusable-bandit-scan.yml
-    with:
-      source_dir: ${{ needs.metadata.outputs.app_dir }}/src
-      python_version: ${{ needs.metadata.outputs.python_version }}
-      report_retention_days: ${{ fromJSON(needs.metadata.outputs.report_retention_days) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - name: Run Bandit scan
+        uses: ./.github/actions/run-bandit-scan
+        with:
+          source_dir: ${{ needs.metadata.outputs.app_dir }}/src
+          python_version: ${{ needs.metadata.outputs.python_version }}
+          report_retention_days: ${{ needs.metadata.outputs.report_retention_days }}
+          artifact_name: ${{ needs.metadata.outputs.bandit_artifact_report }}
 
   tests:
     needs: [metadata, ruff, bandit]
-    uses: ./.github/workflows/tests.yml
-    with:
-      app_dir: ${{ needs.metadata.outputs.app_dir }}
-      python_version: ${{ needs.metadata.outputs.python_version }}
-      requirements_path: ${{ needs.metadata.outputs.requirements_path }}
-      coverage_fail_under: ${{ fromJSON(needs.metadata.outputs.coverage_fail_under) }}
-      report_retention_days: ${{ fromJSON(needs.metadata.outputs.report_retention_days) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - name: Run tests
+        uses: ./.github/actions/run-tests
+        with:
+          app_dir: ${{ needs.metadata.outputs.app_dir }}
+          python_version: ${{ needs.metadata.outputs.python_version }}
+          requirements_path: ${{ needs.metadata.outputs.requirements_path }}
+          coverage_fail_under: ${{ needs.metadata.outputs.coverage_fail_under }}
+          report_retention_days: ${{ needs.metadata.outputs.report_retention_days }}
+          artifact_name: ${{ needs.metadata.outputs.test_artifact_report }}
 
   pip_audit:
     needs: [metadata, tests]
-    uses: ./.github/workflows/reusable-pip-audit-scan.yml
-    with:
-      requirements_path: ${{ needs.metadata.outputs.requirements_file }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - name: Run pip-audit
+        uses: ./.github/actions/run-pip-audit
+        with:
+          requirements_path: ${{ needs.metadata.outputs.requirements_file }}
 
   build:
     needs: [metadata, pip_audit]
@@ -121,13 +154,20 @@ jobs:
       github.ref == 'refs/heads/main' ||
       startsWith(github.ref, 'refs/heads/release/') ||
       (github.event_name == 'pull_request' && github.base_ref == 'main')
-    uses: ./.github/workflows/build.yml
-    with:
-      app_dir: ${{ needs.metadata.outputs.app_dir }}
-      image_name: ${{ needs.metadata.outputs.image_name }}
-      image_tag: ${{ needs.metadata.outputs.image_tag }}
-      artifact_name: ${{ needs.metadata.outputs.image_artifact_name }}
-      artifact_retention_days: ${{ fromJSON(needs.metadata.outputs.image_retention_days) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - name: Build Docker image
+        uses: ./.github/actions/run-build
+        with:
+          app_dir: ${{ needs.metadata.outputs.app_dir }}
+          image_name: ${{ needs.metadata.outputs.image_name }}
+          image_tag: ${{ needs.metadata.outputs.image_tag }}
+          artifact_name: ${{ needs.metadata.outputs.image_artifact_name }}
+          artifact_retention_days: ${{ needs.metadata.outputs.image_retention_days }}
 
   trivy:
     needs: [metadata, build]
@@ -136,28 +176,48 @@ jobs:
       github.ref == 'refs/heads/main' ||
       startsWith(github.ref, 'refs/heads/release/') ||
       (github.event_name == 'pull_request' && github.base_ref == 'main')
-    uses: ./.github/workflows/reusable-trivy-report.yml
-    with:
-      image_name: ${{ needs.metadata.outputs.image_name }}
-      image_tag: ${{ needs.metadata.outputs.image_tag }}
-      artifact_name: ${{ needs.metadata.outputs.image_artifact_name }}
-      report_retention_days: ${{ fromJSON(needs.metadata.outputs.report_retention_days) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      trivy_blocking: ${{ steps.trivy.outputs.trivy_blocking }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - name: Run Trivy scan
+        id: trivy
+        uses: ./.github/actions/run-trivy-report
+        with:
+          image_name: ${{ needs.metadata.outputs.image_name }}
+          image_tag: ${{ needs.metadata.outputs.image_tag }}
+          artifact_name: ${{ needs.metadata.outputs.image_artifact_name }}
+          report_retention_days: ${{ needs.metadata.outputs.report_retention_days }}
+          report_artifact_name: ${{ needs.metadata.outputs.trivy_artifact_report }}
 
   sonar:
     needs: [metadata, ruff, bandit, tests, trivy]
     # SonarQube runs only after code lands on main.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    uses: ./.github/workflows/reusable-sonar.yml
-    secrets:
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-    with:
-      sonar_environment: ${{ needs.metadata.outputs.sonar_environment }}
-      sonar_host_url: ${{ needs.metadata.outputs.sonar_host_url }}
-      project_base_dir: ${{ needs.metadata.outputs.app_dir }}
-      ruff_artifact_report: ${{ needs.metadata.outputs.ruff_artifact_report }}
-      bandit_artifact_report: ${{ needs.metadata.outputs.bandit_artifact_report }}
-      test_artifact_report: ${{ needs.metadata.outputs.test_artifact_report }}
-      trivy_artifact_report: ${{ needs.metadata.outputs.trivy_artifact_report }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: ${{ needs.metadata.outputs.sonar_environment }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Run SonarQube scan
+        uses: ./.github/actions/run-sonar-scan
+        with:
+          sonar_host_url: ${{ needs.metadata.outputs.sonar_host_url }}
+          sonar_token: ${{ secrets.SONAR_TOKEN }}
+          project_base_dir: ${{ needs.metadata.outputs.app_dir }}
+          ruff_artifact_report: ${{ needs.metadata.outputs.ruff_artifact_report }}
+          bandit_artifact_report: ${{ needs.metadata.outputs.bandit_artifact_report }}
+          test_artifact_report: ${{ needs.metadata.outputs.test_artifact_report }}
+          trivy_artifact_report: ${{ needs.metadata.outputs.trivy_artifact_report }}
 
   trivy_enforcement:
     needs: trivy
@@ -169,10 +229,17 @@ jobs:
         startsWith(github.ref, 'refs/heads/release/') ||
         (github.event_name == 'pull_request' && github.base_ref == 'main')
       )
-    uses: ./.github/workflows/reusable-trivy-enforcement.yml
-    with:
-      trivy_job_result: ${{ needs.trivy.result }}
-      trivy_blocking: ${{ needs.trivy.outputs.trivy_blocking }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - name: Apply Trivy enforcement
+        uses: ./.github/actions/run-trivy-enforcement
+        with:
+          trivy_job_result: ${{ needs.trivy.result }}
+          trivy_blocking: ${{ needs.trivy.outputs.trivy_blocking }}
 
   # Future Slack notification hook:
   # notify:

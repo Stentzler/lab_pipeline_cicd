@@ -1,0 +1,58 @@
+name: Run Bandit Scan
+description: Install and run Bandit, upload the JSON report, and fail on findings.
+
+inputs:
+  source_dir:
+    description: Source directory scanned by Bandit.
+    required: true
+  python_version:
+    description: Python version used to install Bandit.
+    required: true
+  report_retention_days:
+    description: Artifact retention period in days.
+    required: true
+  artifact_name:
+    description: Artifact name used for the Bandit report.
+    required: false
+    default: bandit-report
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python environment
+      uses: ./.github/actions/setup-python-tooling
+      with:
+        python_version: ${{ inputs.python_version }}
+        cache_dependency_path: app/requirements.txt
+        install_command: |-
+          python -m pip install --upgrade pip
+          python -m pip install bandit
+        working_directory: .
+
+    - name: Run Bandit and save JSON report
+      id: bandit
+      shell: bash
+      run: |
+        mkdir -p reports
+        set +e
+        python -m bandit \
+          -r "${{ inputs.source_dir }}" \
+          -f json \
+          -o reports/bandit-report.json \
+          -ll \
+          -ii
+        echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+        set -e
+
+    - name: Upload Bandit report
+      uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+      with:
+        name: ${{ inputs.artifact_name }}
+        path: reports/bandit-report.json
+        if-no-files-found: error
+        retention-days: ${{ inputs.report_retention_days }}
+
+    - name: Fail if Bandit found issues
+      if: ${{ steps.bandit.outputs.exit_code != '0' }}
+      shell: bash
+      run: exit 1

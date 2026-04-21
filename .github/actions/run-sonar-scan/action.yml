@@ -1,0 +1,84 @@
+name: Run Sonar Scan
+description: Download reports and execute the SonarQube scan.
+
+inputs:
+  sonar_host_url:
+    description: SonarQube host URL.
+    required: true
+  sonar_token:
+    description: SonarQube token.
+    required: true
+  project_base_dir:
+    description: Base directory passed to the SonarQube scan action.
+    required: true
+  ruff_artifact_report:
+    description: Ruff report artifact name.
+    required: true
+  bandit_artifact_report:
+    description: Bandit report artifact name.
+    required: true
+  test_artifact_report:
+    description: Test report artifact name.
+    required: true
+  trivy_artifact_report:
+    description: Trivy report artifact name.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Create report directories
+      shell: bash
+      run: mkdir -p "${{ inputs.project_base_dir }}/reports"
+
+    - name: Download Ruff report
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: ${{ inputs.ruff_artifact_report }}
+        path: ${{ inputs.project_base_dir }}/reports
+
+    - name: Download Bandit report
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: ${{ inputs.bandit_artifact_report }}
+        path: ${{ inputs.project_base_dir }}/reports
+
+    - name: Download test reports
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: ${{ inputs.test_artifact_report }}
+        path: ${{ inputs.project_base_dir }}
+
+    - name: Download Trivy SARIF report
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: ${{ inputs.trivy_artifact_report }}
+        path: ${{ inputs.project_base_dir }}/reports
+
+    - name: Debug Sonar env
+      shell: bash
+      env:
+        SONAR_HOST_URL: ${{ inputs.sonar_host_url }}
+        SONAR_TOKEN: ${{ inputs.sonar_token }}
+      run: |
+        if [ -z "$SONAR_HOST_URL" ]; then
+          echo "SONAR_HOST_URL is empty"
+          exit 1
+        else
+          echo "SONAR_HOST_URL is present"
+        fi
+
+        if [ -z "$SONAR_TOKEN" ]; then
+          echo "SONAR_TOKEN is empty"
+          exit 1
+        else
+          echo "SONAR_TOKEN is present"
+        fi
+
+    - name: Run SonarQube scan
+      uses: SonarSource/sonarqube-scan-action@299e4b793aaa83bf2aba7c9c14bedbb485688ec4
+      env:
+        SONAR_TOKEN: ${{ inputs.sonar_token }}
+        SONAR_HOST_URL: ${{ inputs.sonar_host_url }}
+      with:
+        projectBaseDir: ${{ inputs.project_base_dir }}

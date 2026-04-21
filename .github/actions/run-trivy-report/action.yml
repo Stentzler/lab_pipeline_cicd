@@ -1,0 +1,83 @@
+name: Run Trivy Report
+description: Load the built image, run Trivy, upload the SARIF report, and expose blocking status.
+
+inputs:
+  image_name:
+    description: Docker image name.
+    required: true
+  image_tag:
+    description: Docker image tag.
+    required: true
+  artifact_name:
+    description: Artifact name used to download the packaged image.
+    required: true
+  trivy_image:
+    description: Trivy Docker image.
+    required: false
+    default: aquasec/trivy:0.70.0
+  report_retention_days:
+    description: Artifact retention period in days.
+    required: true
+  report_artifact_name:
+    description: Artifact name used for the SARIF report.
+    required: false
+    default: trivy-report
+
+outputs:
+  trivy_blocking:
+    description: Whether Trivy found blocking vulnerabilities.
+    value: ${{ steps.trivy.outputs.blocking }}
+
+runs:
+  using: composite
+  steps:
+    - name: Download Docker image artifact
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: ${{ inputs.artifact_name }}
+        path: trivy-artifact
+
+    - name: Load Docker image from tarball
+      shell: bash
+      run: docker load --input trivy-artifact/image.tar
+
+    - name: Verify loaded image
+      shell: bash
+      run: docker image inspect "${{ inputs.image_name }}:${{ inputs.image_tag }}" > /dev/null
+
+    - name: Run Trivy and save SARIF
+      id: trivy
+      shell: bash
+      env:
+        IMAGE_REF: ${{ inputs.image_name }}:${{ inputs.image_tag }}
+        TRIVY_IMAGE: ${{ inputs.trivy_image }}
+      run: |
+        mkdir -p reports
+        set +e
+        docker run --rm \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v "$PWD:/work" \
+          "$TRIVY_IMAGE" image \
+          --format sarif \
+          --output /work/reports/trivy-report.sarif \
+          --severity HIGH,CRITICAL \
+          --ignore-unfixed \
+          --vuln-type os,library \
+          --exit-code 1 \
+          "$IMAGE_REF"
+        exit_code=$?
+
+        if [ "$exit_code" -eq 0 ]; then
+          echo "blocking=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "blocking=true" >> "$GITHUB_OUTPUT"
+        fi
+        set -e
+
+    - name: Upload Trivy SARIF report
+      uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+      with:
+        name: ${{ inputs.report_artifact_name }}
+        path: reports/trivy-report.sarif
+        if-no-files-found: error
+        retention-days: ${{ inputs.report_retention_days }}

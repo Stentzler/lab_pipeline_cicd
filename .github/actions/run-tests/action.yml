@@ -1,0 +1,73 @@
+name: Run Tests
+description: Install dependencies, execute tests with coverage, upload reports, and fail on test errors.
+
+inputs:
+  app_dir:
+    description: Application directory where tests are executed.
+    required: true
+  python_version:
+    description: Python version used for the test environment.
+    required: true
+  requirements_path:
+    description: Requirements file relative to app_dir.
+    required: true
+  coverage_fail_under:
+    description: Minimum required coverage percentage.
+    required: true
+  report_retention_days:
+    description: Artifact retention period in days.
+    required: true
+  artifact_name:
+    description: Artifact name used for test reports.
+    required: false
+    default: test-reports
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python environment
+      uses: ./.github/actions/setup-python-tooling
+      with:
+        python_version: ${{ inputs.python_version }}
+        cache_dependency_path: ${{ inputs.app_dir }}/${{ inputs.requirements_path }}
+        install_command: |-
+          python -m pip install --upgrade pip
+          python -m pip install -r "${{ inputs.requirements_path }}"
+        working_directory: ${{ inputs.app_dir }}
+
+    - name: Check dependency graph
+      shell: bash
+      working-directory: ${{ inputs.app_dir }}
+      run: python -m pip check
+
+    - name: Run tests with coverage
+      id: pytest
+      shell: bash
+      working-directory: ${{ inputs.app_dir }}
+      run: |
+        mkdir -p reports
+        set +e
+        python -m pytest tests/unit tests/integration -q \
+          --cov \
+          --cov-config=.coveragerc \
+          --cov-report=term-missing \
+          --cov-report=xml:coverage.xml \
+          --junitxml=reports/junit.xml \
+          --cov-fail-under=${{ inputs.coverage_fail_under }}
+        echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+        set -e
+
+    - name: Upload coverage and test reports
+      uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+      with:
+        name: ${{ inputs.artifact_name }}
+        path: |
+          ${{ inputs.app_dir }}/coverage.xml
+          ${{ inputs.app_dir }}/reports/junit.xml
+        if-no-files-found: error
+        retention-days: ${{ inputs.report_retention_days }}
+
+    - name: Fail if tests failed
+      if: ${{ steps.pytest.outputs.exit_code != '0' }}
+      shell: bash
+      run: exit 1
