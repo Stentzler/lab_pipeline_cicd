@@ -21,6 +21,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -187,6 +188,8 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      release_version: ${{ steps.release_version.outputs.project_version }}
     environment:
       name: ${{ needs.metadata.outputs.sonar_environment }}
     steps:
@@ -195,12 +198,22 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Resolve Sonar project version
+        id: release_version
+        uses: ./.github/actions/resolve-sonar-version
+        with:
+          github_token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          commit_sha: ${{ github.sha }}
+          target_branch: main
+
       - name: Run SonarQube scan
         uses: ./.github/actions/run-sonar-scan
         with:
           sonar_host_url: ${{ vars.SONAR_HOST_URL }}
           sonar_token: ${{ secrets.SONAR_TOKEN }}
           project_base_dir: ${{ needs.metadata.outputs.app_dir }}
+          project_version: ${{ steps.release_version.outputs.project_version }}
           test_artifact_report: ${{ needs.metadata.outputs.test_artifact_report }}
           trivy_artifact_report: ${{ needs.metadata.outputs.trivy_artifact_report }}
 
