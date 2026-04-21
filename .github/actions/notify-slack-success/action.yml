@@ -5,10 +5,46 @@ inputs:
   webhook_url:
     description: Slack incoming webhook URL for success notifications.
     required: true
+  slack_user_map:
+    description: Optional JSON object mapping GitHub usernames to Slack member IDs.
+    required: false
+    default: '{}'
 
 runs:
   using: composite
   steps:
+    - name: Prepare Slack context
+      id: slack_context
+      shell: bash
+      env:
+        GITHUB_ACTOR_NAME: ${{ github.actor }}
+        GITHUB_BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+        GITHUB_COMMIT_SHA: ${{ github.sha }}
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        GITHUB_REPOSITORY_NAME: ${{ github.repository }}
+        GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        GITHUB_SOURCE_URL: ${{ github.event.pull_request.html_url || github.event.head_commit.url || github.event.repository.html_url }}
+        GITHUB_WORKFLOW_NAME: ${{ github.workflow }}
+        SLACK_USER_MAP: ${{ inputs.slack_user_map }}
+      run: |
+        short_sha="${GITHUB_COMMIT_SHA:0:7}"
+        actor_mention="@${GITHUB_ACTOR_NAME}"
+
+        if slack_user_id="$(jq -r --arg actor "$GITHUB_ACTOR_NAME" '.[$actor] // empty' <<< "$SLACK_USER_MAP")" && [ -n "$slack_user_id" ]; then
+          actor_mention="<@${slack_user_id}>"
+        fi
+
+        {
+          echo "actor_mention=${actor_mention}"
+          echo "branch=${GITHUB_BRANCH_NAME}"
+          echo "event_name=${GITHUB_EVENT_NAME}"
+          echo "repository=${GITHUB_REPOSITORY_NAME}"
+          echo "run_url=${GITHUB_RUN_URL}"
+          echo "short_sha=${short_sha}"
+          echo "source_url=${GITHUB_SOURCE_URL}"
+          echo "workflow=${GITHUB_WORKFLOW_NAME}"
+        } >> "$GITHUB_OUTPUT"
+
     - name: Notify Slack success channel
       uses: slackapi/slack-github-action@af78098f536edbc4de71162a307590698245be95 # v3.0.1
       with:
@@ -20,20 +56,22 @@ runs:
             - type: section
               text:
                 type: mrkdwn
-                text: "*CI/CD succeeded* for `${{ github.repository }}`"
+                text: "*CI/CD succeeded* for `${{ steps.slack_context.outputs.repository }}`"
             - type: section
               fields:
                 - type: mrkdwn
-                  text: "*Workflow:*\n${{ github.workflow }}"
+                  text: "*Project:*\n${{ steps.slack_context.outputs.repository }}"
                 - type: mrkdwn
-                  text: "*Trigger:*\n${{ github.event_name }}"
+                  text: "*Workflow:*\n${{ steps.slack_context.outputs.workflow }}"
                 - type: mrkdwn
-                  text: "*Branch:*\n${{ github.head_ref || github.ref_name }}"
+                  text: "*Trigger:*\n${{ steps.slack_context.outputs.event_name }}"
                 - type: mrkdwn
-                  text: "*Actor:*\n${{ github.actor }}"
+                  text: "*Branch:*\n${{ steps.slack_context.outputs.branch }}"
                 - type: mrkdwn
-                  text: "*Commit:*\n`${{ github.sha }}`"
+                  text: "*Triggered by:*\n${{ steps.slack_context.outputs.actor_mention }}"
+                - type: mrkdwn
+                  text: "*Commit:*\n`${{ steps.slack_context.outputs.short_sha }}`"
             - type: section
               text:
                 type: mrkdwn
-                text: "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Open workflow run> | <${{ github.event.pull_request.html_url || github.event.head_commit.url || github.event.repository.html_url }}|Open source event>"
+                text: "<${{ steps.slack_context.outputs.run_url }}|Open workflow run> | <${{ steps.slack_context.outputs.source_url }}|Open source event>"

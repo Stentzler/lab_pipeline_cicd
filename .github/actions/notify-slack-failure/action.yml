@@ -131,6 +131,8 @@ runs:
             - type: section
               fields:
                 - type: mrkdwn
+                  text: "*Project:*\n${{ steps.slack_context.outputs.repository }}"
+                - type: mrkdwn
                   text: "*Workflow:*\n${{ steps.slack_context.outputs.workflow }}"
                 - type: mrkdwn
                   text: "*Trigger:*\n${{ steps.slack_context.outputs.event_name }}"

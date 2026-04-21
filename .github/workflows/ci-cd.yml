@@ -281,3 +281,4 @@ jobs:
         uses: ./.github/actions/notify-slack-success
         with:
           webhook_url: ${{ secrets.SLACK_CICD_SUCCESS }}
+          slack_user_map: ${{ vars.SLACK_GITHUB_USER_MAP || '{}' }} # {"github_user": "slack_user_id"}
