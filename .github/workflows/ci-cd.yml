@@ -38,7 +38,6 @@ env:
   REQUIREMENTS_FILE: app/requirements.txt
   RUFF_ARTIFACT_REPORT: ruff-report
   SONAR_ENVIRONMENT: SONAR_TOKEN
-  SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
   TEST_ARTIFACT_REPORT: test-reports
   TRIVY_ARTIFACT_REPORT: trivy-report
 
@@ -60,7 +59,6 @@ jobs:
       requirements_file: ${{ steps.values.outputs.requirements_file }}
       ruff_artifact_report: ${{ steps.values.outputs.ruff_artifact_report }}
       sonar_environment: ${{ steps.values.outputs.sonar_environment }}
-      sonar_host_url: ${{ steps.values.outputs.sonar_host_url }}
       test_artifact_report: ${{ steps.values.outputs.test_artifact_report }}
       trivy_artifact_report: ${{ steps.values.outputs.trivy_artifact_report }}
     steps:
@@ -80,7 +78,6 @@ jobs:
           echo "requirements_file=${REQUIREMENTS_FILE}" >> "$GITHUB_OUTPUT"
           echo "ruff_artifact_report=${RUFF_ARTIFACT_REPORT}" >> "$GITHUB_OUTPUT"
           echo "sonar_environment=${SONAR_ENVIRONMENT}" >> "$GITHUB_OUTPUT"
-          echo "sonar_host_url=${SONAR_HOST_URL}" >> "$GITHUB_OUTPUT"
           echo "test_artifact_report=${TEST_ARTIFACT_REPORT}" >> "$GITHUB_OUTPUT"
           echo "trivy_artifact_report=${TRIVY_ARTIFACT_REPORT}" >> "$GITHUB_OUTPUT"
 
@@ -211,7 +208,7 @@ jobs:
       - name: Run SonarQube scan
         uses: ./.github/actions/run-sonar-scan
         with:
-          sonar_host_url: ${{ needs.metadata.outputs.sonar_host_url }}
+          sonar_host_url: ${{ vars.SONAR_HOST_URL }}
           sonar_token: ${{ secrets.SONAR_TOKEN }}
           project_base_dir: ${{ needs.metadata.outputs.app_dir }}
           ruff_artifact_report: ${{ needs.metadata.outputs.ruff_artifact_report }}
