@@ -11,6 +11,9 @@ inputs:
   project_base_dir:
     description: Base directory passed to the SonarQube scan action.
     required: true
+  project_version:
+    description: Project version passed to SonarQube.
+    required: true
   test_artifact_report:
     description: Test report artifact name.
     required: true
@@ -42,6 +45,7 @@ runs:
       env:
         SONAR_HOST_URL: ${{ inputs.sonar_host_url }}
         SONAR_TOKEN: ${{ inputs.sonar_token }}
+        SONAR_PROJECT_VERSION: ${{ inputs.project_version }}
       run: |
         missing=0
 
@@ -59,6 +63,13 @@ runs:
           echo "SONAR_TOKEN is present"
         fi
 
+        if [ -z "$SONAR_PROJECT_VERSION" ]; then
+          echo "SONAR_PROJECT_VERSION is empty"
+          missing=1
+        else
+          echo "SONAR_PROJECT_VERSION is $SONAR_PROJECT_VERSION"
+        fi
+
         if [ "$missing" -ne 0 ]; then
           exit 1
         fi
@@ -70,3 +81,5 @@ runs:
         SONAR_HOST_URL: ${{ inputs.sonar_host_url }}
       with:
         projectBaseDir: ${{ inputs.project_base_dir }}
+        args: >
+          -Dsonar.projectVersion=${{ inputs.project_version }}
