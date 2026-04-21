@@ -12,9 +12,16 @@ on:
       artifact_name:
         required: true
         type: string
+      trivy_image:
+        required: false
+        type: string
+        default: aquasec/trivy:0.70.0
+      report_retention_days:
+        required: true
+        type: number
     outputs:
       trivy_blocking:
-        description: "Whether Trivy found blocking vulnerabilities"
+        description: Whether Trivy found blocking vulnerabilities.
         value: ${{ jobs.image-inspection.outputs.trivy_blocking }}
 
 permissions:
@@ -36,44 +43,43 @@ jobs:
           path: trivy-artifact
 
       - name: Load Docker image from tarball
-        run: |
-          docker load --input trivy-artifact/image.tar
+        run: docker load --input trivy-artifact/image.tar
 
       - name: Verify loaded image
-        run: |
-          docker image inspect "${{ inputs.image_name }}:${{ inputs.image_tag }}" > /dev/null
+        run: docker image inspect "${{ inputs.image_name }}:${{ inputs.image_tag }}" > /dev/null
 
       - name: Run Trivy and save SARIF
         id: trivy
+        env:
+          IMAGE_REF: ${{ inputs.image_name }}:${{ inputs.image_tag }}
+          TRIVY_IMAGE: ${{ inputs.trivy_image }}
         run: |
           mkdir -p reports
-
           set +e
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "$PWD:/work" \
-            aquasec/trivy:0.70.0 image \
+            "$TRIVY_IMAGE" image \
             --format sarif \
             --output /work/reports/trivy-report.sarif \
             --severity HIGH,CRITICAL \
             --ignore-unfixed \
             --vuln-type os,library \
             --exit-code 1 \
-            "${{ inputs.image_name }}:${{ inputs.image_tag }}"
-          EXIT_CODE=$?
+            "$IMAGE_REF"
+          exit_code=$?
 
-          if [ "$EXIT_CODE" -eq 0 ]; then
+          if [ "$exit_code" -eq 0 ]; then
             echo "blocking=false" >> "$GITHUB_OUTPUT"
           else
             echo "blocking=true" >> "$GITHUB_OUTPUT"
           fi
-
           set -e
 
       - name: Upload Trivy SARIF report
-        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
           name: trivy-report
           path: reports/trivy-report.sarif
           if-no-files-found: error
-          retention-days: 1
+          retention-days: ${{ inputs.report_retention_days }}

@@ -4,36 +4,29 @@ on:
   workflow_call:
     secrets:
       SONAR_TOKEN:
-        required: false
+        required: true
     inputs:
       sonar_environment:
-        required: false
+        required: true
         type: string
-        default: SONAR_TOKEN
       sonar_host_url:
-        required: false
+        required: true
         type: string
-        default: ''
       project_base_dir:
-        required: false
+        required: true
         type: string
-        default: app
-      ruff_artifact_name:
-        required: false
+      ruff_artifact_report:
+        required: true
         type: string
-        default: ruff-report
-      bandit_artifact_name:
-        required: false
+      bandit_artifact_report:
+        required: true
         type: string
-        default: bandit-report
-      test_artifact_name:
-        required: false
+      test_artifact_report:
+        required: true
         type: string
-        default: test-reports
-      trivy_artifact_name:
-        required: false
+      trivy_artifact_report:
+        required: true
         type: string
-        default: trivy-report
 
 permissions:
   contents: read
@@ -59,30 +52,30 @@ jobs:
       - name: Download Ruff report
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: ${{ inputs.ruff_artifact_name }}
+          name: ${{ inputs.ruff_artifact_report }}
           path: ${{ inputs.project_base_dir }}/reports
 
       - name: Download Bandit report
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: ${{ inputs.bandit_artifact_name }}
+          name: ${{ inputs.bandit_artifact_report }}
           path: ${{ inputs.project_base_dir }}/reports
 
       - name: Download test reports
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: ${{ inputs.test_artifact_name }}
+          name: ${{ inputs.test_artifact_report }}
           path: ${{ inputs.project_base_dir }}
 
       - name: Download Trivy SARIF report
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: ${{ inputs.trivy_artifact_name }}
+          name: ${{ inputs.trivy_artifact_report }}
           path: ${{ inputs.project_base_dir }}/reports
 
       - name: Debug Sonar env
         env:
-          SONAR_HOST_URL: ${{ inputs.sonar_host_url || vars.SONAR_HOST_URL }}
+          SONAR_HOST_URL: ${{ inputs.sonar_host_url }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
           if [ -z "$SONAR_HOST_URL" ]; then
@@ -103,6 +96,6 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@299e4b793aaa83bf2aba7c9c14bedbb485688ec4
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ inputs.sonar_host_url || vars.SONAR_HOST_URL }}
+          SONAR_HOST_URL: ${{ inputs.sonar_host_url }}
         with:
           projectBaseDir: ${{ inputs.project_base_dir }}
