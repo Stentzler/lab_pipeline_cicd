@@ -91,7 +91,7 @@ runs:
                   }
               ]
               | if length == 0 then
-                  "No failed job details were available from the Actions API."
+                  "Open the workflow run for logs."
                   else
                     map(
                     "- <\(.html_url)|*\(.name)*> (\(.conclusion))"
@@ -107,7 +107,7 @@ runs:
           )"; then
           :
         else
-          summary="Could not collect failed job details from the Actions API. Open the workflow run for logs."
+          summary="Open the workflow run for logs."
         fi
 
         {
@@ -118,7 +118,6 @@ runs:
 
     - name: Notify Slack failure channel
       uses: slackapi/slack-github-action@af78098f536edbc4de71162a307590698245be95 # v3.0.1
-
       with:
         webhook: ${{ inputs.webhook_url }}
         webhook-type: incoming-webhook
@@ -144,11 +143,15 @@ runs:
             - type: section
               text:
                 type: mrkdwn
-                text: ${{ toJSON(format('*Source:*{0}{1}', '\n', steps.slack_context.outputs.source_label)) }}
+                text: |
+                  *Source:*
+                  ${{ steps.slack_context.outputs.source_label }}
             - type: section
               text:
                 type: mrkdwn
-                text: ${{ toJSON(format('*Failed job/step:*{0}{1}', '\n', steps.failure_details.outputs.summary)) }}
+                text: |
+                  *Failed job/step:*
+                  ${{ steps.failure_details.outputs.summary }}
             - type: section
               text:
                 type: mrkdwn
