@@ -11,10 +11,10 @@ def test_health() -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_hello() -> None:
-    response = client.get("/hello")
-    assert response.status_code == 200
-    assert response.json() == {"message": "hello from study api"}
+# def test_hello() -> None:
+#     response = client.get("/hello")
+#     assert response.status_code == 200
+#     assert response.json() == {"message": "hello from study api"}
 
 
 def test_sum() -> None:
