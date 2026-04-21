@@ -20,6 +20,7 @@ on:
       - '.github/workflows/**'
 
 permissions:
+  actions: read
   contents: read
   pull-requests: read
 
@@ -239,17 +240,38 @@ jobs:
           trivy_job_result: ${{ needs.trivy.result }}
           trivy_blocking: ${{ needs.trivy.outputs.trivy_blocking }}
 
-  # Future Slack notification hook:
-  # notify:
-  #   needs: [ruff, bandit, tests, pip_audit, build, trivy, sonar, trivy_enforcement]
-  #   if: failure()
-  #   uses: ./.github/workflows/reusable-slack-notify.yml
-  #   secrets:
-  #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-  #   with:
-  #     status: failure
-  #     workflow_name: ${{ github.workflow }}
-  #     branch: ${{ github.ref_name }}
-  #     commit_sha: ${{ github.sha }}
-  #     actor: ${{ github.actor }}
-  #     run_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+  notify_slack_failure:
+    needs: [metadata, ruff, bandit, tests, pip_audit, build, trivy, sonar, trivy_enforcement]
+    if: >-
+      always() &&
+      (
+        contains(needs.*.result, 'failure') ||
+        contains(needs.*.result, 'cancelled')
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    environment:
+      name: SONAR_TOKEN
+    steps:
+      - name: Notify Slack failure
+        uses: ./.github/actions/notify-slack-failure
+        with:
+          webhook_url: ${{ secrets.SLACK_CICD_ERRORS }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          slack_user_map: ${{ vars.SLACK_GITHUB_USER_MAP || '{}' }} # {"github_user": "slack_user_id"}
+
+  notify_slack_success:
+    needs: [metadata, ruff, bandit, tests, pip_audit, build, trivy, sonar, trivy_enforcement]
+    if: >-
+      always() &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    environment:
+      name: SONAR_TOKEN
+    steps:
+      - name: Notify Slack success
+        uses: ./.github/actions/notify-slack-success
+        with:
+          webhook_url: ${{ secrets.SLACK_CICD_SUCCESS }}

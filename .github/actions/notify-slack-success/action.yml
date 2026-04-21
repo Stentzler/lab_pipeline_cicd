@@ -1,0 +1,39 @@
+name: Notify Slack Success
+description: Send a CI/CD success notification to Slack.
+
+inputs:
+  webhook_url:
+    description: Slack incoming webhook URL for success notifications.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Notify Slack success channel
+      uses: slackapi/slack-github-action@v3.0.1
+      with:
+        webhook: ${{ inputs.webhook_url }}
+        webhook-type: incoming-webhook
+        payload: |
+          text: "CI/CD succeeded for ${{ github.repository }}"
+          blocks:
+            - type: section
+              text:
+                type: mrkdwn
+                text: "*CI/CD succeeded* for `${{ github.repository }}`"
+            - type: section
+              fields:
+                - type: mrkdwn
+                  text: "*Workflow:*\n${{ github.workflow }}"
+                - type: mrkdwn
+                  text: "*Trigger:*\n${{ github.event_name }}"
+                - type: mrkdwn
+                  text: "*Branch:*\n${{ github.head_ref || github.ref_name }}"
+                - type: mrkdwn
+                  text: "*Actor:*\n${{ github.actor }}"
+                - type: mrkdwn
+                  text: "*Commit:*\n`${{ github.sha }}`"
+            - type: section
+              text:
+                type: mrkdwn
+                text: "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Open workflow run> | <${{ github.event.pull_request.html_url || github.event.head_commit.url || github.event.repository.html_url }}|Open source event>"
