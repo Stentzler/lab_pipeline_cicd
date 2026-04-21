@@ -253,6 +253,9 @@ jobs:
     environment:
       name: SONAR_TOKEN
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
       - name: Notify Slack failure
         uses: ./.github/actions/notify-slack-failure
         with:
@@ -271,6 +274,9 @@ jobs:
     environment:
       name: SONAR_TOKEN
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
       - name: Notify Slack success
         uses: ./.github/actions/notify-slack-success
         with:
