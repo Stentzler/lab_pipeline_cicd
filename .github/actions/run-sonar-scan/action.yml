@@ -11,12 +11,6 @@ inputs:
   project_base_dir:
     description: Base directory passed to the SonarQube scan action.
     required: true
-  ruff_artifact_report:
-    description: Ruff report artifact name.
-    required: true
-  bandit_artifact_report:
-    description: Bandit report artifact name.
-    required: true
   test_artifact_report:
     description: Test report artifact name.
     required: true
@@ -30,18 +24,6 @@ runs:
     - name: Create report directories
       shell: bash
       run: mkdir -p "${{ inputs.project_base_dir }}/reports"
-
-    - name: Download Ruff report
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-      with:
-        name: ${{ inputs.ruff_artifact_report }}
-        path: ${{ inputs.project_base_dir }}/reports
-
-    - name: Download Bandit report
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-      with:
-        name: ${{ inputs.bandit_artifact_report }}
-        path: ${{ inputs.project_base_dir }}/reports
 
     - name: Download test reports
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
