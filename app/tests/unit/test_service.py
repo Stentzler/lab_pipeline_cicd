@@ -1,8 +1,5 @@
 from src.service import sum_numbers
 
 
-# def test_sum_numbers() -> None:
-#     assert sum_numbers(2, 3) == 5
-
-def placeholer() -> None:
-    assert True == 1
+def test_sum_numbers() -> None:
+    assert sum_numbers(2, 3) == 5
