@@ -1,5 +1,5 @@
 name: Run Ruff Scan
-description: Install and run Ruff, upload the JSON report, and fail on findings.
+description: Install and run Ruff as a CI quality gate.
 
 inputs:
   app_dir:
@@ -8,13 +8,6 @@ inputs:
   config_path:
     description: Ruff config path.
     required: true
-  report_retention_days:
-    description: Artifact retention period in days.
-    required: true
-  artifact_name:
-    description: Artifact name used for the Ruff report.
-    required: false
-    default: ruff-report
 
 runs:
   using: composite
@@ -22,28 +15,6 @@ runs:
     - name: Install Ruff
       uses: astral-sh/ruff-action@4919ec5cf1f49eff0871dbcea0da843445b837e6 # v3.6.1
 
-    - name: Run Ruff and save JSON report
-      id: ruff
+    - name: Run Ruff
       shell: bash
-      run: |
-        mkdir -p reports
-        set +e
-        ruff check "${{ inputs.app_dir }}" \
-          --config "${{ inputs.config_path }}" \
-          --output-format=json \
-          > reports/ruff-report.json
-        echo "exit_code=$?" >> "$GITHUB_OUTPUT"
-        set -e
-
-    - name: Upload Ruff report
-      uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
-      with:
-        name: ${{ inputs.artifact_name }}
-        path: reports/ruff-report.json
-        if-no-files-found: error
-        retention-days: ${{ inputs.report_retention_days }}
-
-    - name: Fail if Ruff found issues
-      if: ${{ steps.ruff.outputs.exit_code != '0' }}
-      shell: bash
-      run: exit 1
+      run: ruff check "${{ inputs.app_dir }}" --config "${{ inputs.config_path }}"

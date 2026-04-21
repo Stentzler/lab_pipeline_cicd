@@ -28,7 +28,6 @@ concurrency:
 
 env:
   APP_DIR: app
-  BANDIT_ARTIFACT_REPORT: bandit-report
   COVERAGE_FAIL_UNDER: 80
   IMAGE_NAME: study-api
   IMAGE_RETENTION_DAYS: 1
@@ -36,7 +35,6 @@ env:
   REPORT_RETENTION_DAYS: 1
   REQUIREMENTS_PATH: requirements.txt
   REQUIREMENTS_FILE: app/requirements.txt
-  RUFF_ARTIFACT_REPORT: ruff-report
   SONAR_ENVIRONMENT: SONAR_TOKEN
   TEST_ARTIFACT_REPORT: test-reports
   TRIVY_ARTIFACT_REPORT: trivy-report
@@ -47,7 +45,6 @@ jobs:
     timeout-minutes: 1
     outputs:
       app_dir: ${{ steps.values.outputs.app_dir }}
-      bandit_artifact_report: ${{ steps.values.outputs.bandit_artifact_report }}
       coverage_fail_under: ${{ steps.values.outputs.coverage_fail_under }}
       image_name: ${{ steps.values.outputs.image_name }}
       image_tag: ${{ steps.values.outputs.image_tag }}
@@ -57,7 +54,6 @@ jobs:
       report_retention_days: ${{ steps.values.outputs.report_retention_days }}
       requirements_path: ${{ steps.values.outputs.requirements_path }}
       requirements_file: ${{ steps.values.outputs.requirements_file }}
-      ruff_artifact_report: ${{ steps.values.outputs.ruff_artifact_report }}
       sonar_environment: ${{ steps.values.outputs.sonar_environment }}
       test_artifact_report: ${{ steps.values.outputs.test_artifact_report }}
       trivy_artifact_report: ${{ steps.values.outputs.trivy_artifact_report }}
@@ -66,7 +62,6 @@ jobs:
         id: values
         run: |
           echo "app_dir=${APP_DIR}" >> "$GITHUB_OUTPUT"
-          echo "bandit_artifact_report=${BANDIT_ARTIFACT_REPORT}" >> "$GITHUB_OUTPUT"
           echo "coverage_fail_under=${COVERAGE_FAIL_UNDER}" >> "$GITHUB_OUTPUT"
           echo "image_name=${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
           echo "image_tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
@@ -76,7 +71,6 @@ jobs:
           echo "report_retention_days=${REPORT_RETENTION_DAYS}" >> "$GITHUB_OUTPUT"
           echo "requirements_path=${REQUIREMENTS_PATH}" >> "$GITHUB_OUTPUT"
           echo "requirements_file=${REQUIREMENTS_FILE}" >> "$GITHUB_OUTPUT"
-          echo "ruff_artifact_report=${RUFF_ARTIFACT_REPORT}" >> "$GITHUB_OUTPUT"
           echo "sonar_environment=${SONAR_ENVIRONMENT}" >> "$GITHUB_OUTPUT"
           echo "test_artifact_report=${TEST_ARTIFACT_REPORT}" >> "$GITHUB_OUTPUT"
           echo "trivy_artifact_report=${TRIVY_ARTIFACT_REPORT}" >> "$GITHUB_OUTPUT"
@@ -94,8 +88,6 @@ jobs:
         with:
           app_dir: ${{ needs.metadata.outputs.app_dir }}
           config_path: ${{ needs.metadata.outputs.app_dir }}/pyproject.toml
-          report_retention_days: ${{ needs.metadata.outputs.report_retention_days }}
-          artifact_name: ${{ needs.metadata.outputs.ruff_artifact_report }}
 
   bandit:
     needs: metadata
@@ -110,8 +102,6 @@ jobs:
         with:
           source_dir: ${{ needs.metadata.outputs.app_dir }}/src
           python_version: ${{ needs.metadata.outputs.python_version }}
-          report_retention_days: ${{ needs.metadata.outputs.report_retention_days }}
-          artifact_name: ${{ needs.metadata.outputs.bandit_artifact_report }}
 
   tests:
     needs: [metadata, ruff, bandit]
@@ -211,8 +201,6 @@ jobs:
           sonar_host_url: ${{ vars.SONAR_HOST_URL }}
           sonar_token: ${{ secrets.SONAR_TOKEN }}
           project_base_dir: ${{ needs.metadata.outputs.app_dir }}
-          ruff_artifact_report: ${{ needs.metadata.outputs.ruff_artifact_report }}
-          bandit_artifact_report: ${{ needs.metadata.outputs.bandit_artifact_report }}
           test_artifact_report: ${{ needs.metadata.outputs.test_artifact_report }}
           trivy_artifact_report: ${{ needs.metadata.outputs.trivy_artifact_report }}
 
