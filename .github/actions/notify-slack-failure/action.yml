@@ -1,0 +1,160 @@
+name: Notify Slack Failure
+description: Send a CI/CD failure notification to Slack with workflow, trigger, branch, actor, and failed step details.
+
+inputs:
+  webhook_url:
+    description: Slack incoming webhook URL for failure notifications.
+    required: true
+  github_token:
+    description: GitHub token with actions:read permission for collecting failed job details.
+    required: true
+  slack_user_map:
+    description: Optional JSON object mapping GitHub usernames to Slack member IDs.
+    required: false
+    default: '{}'
+
+runs:
+  using: composite
+  steps:
+    - name: Prepare Slack context
+      id: slack_context
+      shell: bash
+      env:
+        GITHUB_ACTOR_NAME: ${{ github.actor }}
+        GITHUB_BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+        GITHUB_COMMIT_SHA: ${{ github.sha }}
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        GITHUB_REPOSITORY_NAME: ${{ github.repository }}
+        GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        GITHUB_SOURCE_URL: ${{ github.event.pull_request.html_url || github.event.head_commit.url || github.event.repository.html_url }}
+        GITHUB_WORKFLOW_NAME: ${{ github.workflow }}
+        HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message || '' }}
+        PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+        PR_TITLE: ${{ github.event.pull_request.title || '' }}
+        SLACK_USER_MAP: ${{ inputs.slack_user_map }}
+      run: |
+        short_sha="${GITHUB_COMMIT_SHA:0:7}"
+        actor_mention="@${GITHUB_ACTOR_NAME}"
+
+        if slack_user_id="$(jq -r --arg actor "$GITHUB_ACTOR_NAME" '.[$actor] // empty' <<< "$SLACK_USER_MAP")" && [ -n "$slack_user_id" ]; then
+          actor_mention="<@${slack_user_id}>"
+        fi
+
+        if [ -n "$PR_NUMBER" ]; then
+          source_label="PR #${PR_NUMBER}: ${PR_TITLE}"
+        elif [ -n "$HEAD_COMMIT_MESSAGE" ]; then
+          source_label="$(printf '%s' "$HEAD_COMMIT_MESSAGE" | head -n 1)"
+        else
+          source_label="${GITHUB_EVENT_NAME}"
+        fi
+
+        {
+          echo "actor_mention=${actor_mention}"
+          echo "branch=${GITHUB_BRANCH_NAME}"
+          echo "event_name=${GITHUB_EVENT_NAME}"
+          echo "repository=${GITHUB_REPOSITORY_NAME}"
+          echo "run_url=${GITHUB_RUN_URL}"
+          echo "short_sha=${short_sha}"
+          echo "source_label<<SLACK_SOURCE_LABEL"
+          echo "$source_label"
+          echo "SLACK_SOURCE_LABEL"
+          echo "source_url=${GITHUB_SOURCE_URL}"
+          echo "workflow=${GITHUB_WORKFLOW_NAME}"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Collect failure details
+      id: failure_details
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+      run: |
+        if jobs_json="$(
+          curl --fail --silent --show-error --location \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?filter=latest&per_page=100"
+        )" && summary="$(
+          jq -r '
+              [
+                .jobs[]
+                | select(.conclusion == "failure" or .conclusion == "cancelled")
+                | {
+                    name,
+                    html_url,
+                    conclusion,
+                    steps: [
+                      .steps[]?
+                      | select(.conclusion == "failure" or .conclusion == "cancelled")
+                      | "\(.name) (\(.conclusion))"
+                    ]
+                  }
+              ]
+              | if length == 0 then
+                  "Open the workflow run for logs."
+                  else
+                    map(
+                    "- <\(.html_url)|*\(.name)*> (\(.conclusion))"
+                    + if (.steps | length) > 0 then
+                        "\n  Step: \(.steps | join(\", \"))"
+                      else
+                        "\n  Step: not reported"
+                      end
+                  )
+                  | join("\n")
+                end
+            ' <<< "$jobs_json"
+          )"; then
+          :
+        else
+          summary="Open the workflow run for logs."
+        fi
+
+        {
+          echo "summary<<SLACK_FAILURE_SUMMARY"
+          echo "$summary"
+          echo "SLACK_FAILURE_SUMMARY"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Notify Slack failure channel
+      uses: slackapi/slack-github-action@af78098f536edbc4de71162a307590698245be95 # v3.0.1
+      with:
+        webhook: ${{ inputs.webhook_url }}
+        webhook-type: incoming-webhook
+        payload: |
+          text: "CI/CD failed for ${{ github.repository }}"
+          blocks:
+            - type: section
+              text:
+                type: mrkdwn
+                text: "*CI/CD failed* for `${{ steps.slack_context.outputs.repository }}`"
+            - type: section
+              fields:
+                - type: mrkdwn
+                  text: "*Project:*\n${{ steps.slack_context.outputs.repository }}"
+                - type: mrkdwn
+                  text: "*Workflow:*\n${{ steps.slack_context.outputs.workflow }}"
+                - type: mrkdwn
+                  text: "*Trigger:*\n${{ steps.slack_context.outputs.event_name }}"
+                - type: mrkdwn
+                  text: "*Branch:*\n${{ steps.slack_context.outputs.branch }}"
+                - type: mrkdwn
+                  text: "*Triggered by:*\n${{ steps.slack_context.outputs.actor_mention }}"
+                - type: mrkdwn
+                  text: "*Commit:*\n`${{ steps.slack_context.outputs.short_sha }}`"
+            - type: section
+              text:
+                type: mrkdwn
+                text: |
+                  *Source:*
+                  ${{ steps.slack_context.outputs.source_label }}
+            - type: section
+              text:
+                type: mrkdwn
+                text: |
+                  *Failed job/step:*
+                  ${{ steps.failure_details.outputs.summary }}
+            - type: section
+              text:
+                type: mrkdwn
+                text: "<${{ steps.slack_context.outputs.run_url }}|Open workflow run> | <${{ steps.slack_context.outputs.source_url }}|Open source event>"

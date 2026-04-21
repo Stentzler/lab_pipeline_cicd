@@ -209,5 +209,6 @@ marimo/_lsp/
 __marimo__/
 
 # Custom
+.tools/
 test.sh
 sample_cicd.md
